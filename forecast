@@ -19,13 +19,34 @@ FORMATTING = {
     'num_width': 10
 }
 
-# Utility functions
+def wrap_with_link(text, url):
+    """Wrap text with OSC8 link if URL is provided"""
+    if url:
+        return f"\033]8;;{url}\007{text}\033]8;;\007"
+    return text
+
 def get_visible_length(s):
     """Calculate visible length of string with ANSI codes"""
-    return len(s) - sum(s.count(code) * len(code) for code in STYLING.values())
+    # Remove ANSI codes and OSC8 sequences
+    ansi_len = sum(s.count(code) * len(code) for code in STYLING.values())
+    
+    # Count and remove OSC8 sequences
+    osc8_start = "\033]8;;"
+    osc8_end = "\007"
+    osc8_count = s.count(osc8_start)
+    osc8_len = osc8_count * (len(osc8_start) + len(osc8_end))
+    
+    # Also count URL portion of OSC8 links
+    url_len = 0
+    if osc8_count:
+        parts = s.split(osc8_start)
+        for part in parts[1:]:  # Skip first part (before first OSC8)
+            url_len += len(part.split(osc8_end)[0])
+    
+    return len(s) - ansi_len - osc8_len - url_len
 
 def pad_string(s, width):
-    """Pad string accounting for ANSI codes"""
+    """Pad string accounting for ANSI codes and OSC8 links"""
     return s + ' ' * (width - get_visible_length(s))
 
 def format_value(value, is_bold=False):
@@ -42,14 +63,15 @@ def format_margin(rep, dem):
         return f"{STYLING['BLUE']}D+{abs(margin):.1f}{STYLING['RESET']}"
     return "TIE"
 
-def format_row(name, rep_val, dem_val):
+def format_row(name, rep_val, dem_val, url=None):
     """Format a single row of data"""
+    name_text = wrap_with_link(name, url) if url else name
     rep_str = format_value(rep_val, rep_val > dem_val)
     dem_str = format_value(dem_val, dem_val > rep_val)
     margin = format_margin(rep_val, dem_val)
     
     return (
-        pad_string(name, FORMATTING['name_width']) +
+        pad_string(name_text, FORMATTING['name_width']) +
         pad_string(rep_str, FORMATTING['num_width']) +
         pad_string(dem_str, FORMATTING['num_width']) +
         pad_string(margin, FORMATTING['num_width'])
@@ -78,7 +100,7 @@ def print_section(title, data, show_stats=True):
     print(f"{STYLING['BOLD']}{STYLING['UNDERLINE']}{header}{STYLING['RESET']}")
     
     for row in data:
-        print(format_row(row['name'], row['rep'], row['dem']))
+        print(format_row(row['name'], row['rep'], row['dem'], row.get('url')))
     
     if show_stats:
         avg_rep, avg_dem, med_rep, med_dem = calculate_stats(data)
