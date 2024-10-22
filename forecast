@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+
+import requests
+from statistics import median
+from datetime import datetime
+import pytz
+
+# Configuration
+STYLING = {
+    'BOLD': '\033[1m',
+    'RESET': '\033[0m',
+    'UNDERLINE': '\033[4m',
+    'RED': '\033[31m',
+    'BLUE': '\033[34m'
+}
+
+FORMATTING = {
+    'name_width': 20,
+    'num_width': 10
+}
+
+# Utility functions
+def get_visible_length(s):
+    """Calculate visible length of string with ANSI codes"""
+    return len(s) - sum(s.count(code) * len(code) for code in STYLING.values())
+
+def pad_string(s, width):
+    """Pad string accounting for ANSI codes"""
+    return s + ' ' * (width - get_visible_length(s))
+
+def format_value(value, is_bold=False):
+    """Format a numeric value with optional bold"""
+    formatted = f"{value:.1f}"
+    return f"{STYLING['BOLD']}{formatted}{STYLING['RESET']}" if is_bold else formatted
+
+def format_margin(rep, dem):
+    """Format margin with color coding"""
+    margin = rep - dem
+    if margin > 0:
+        return f"{STYLING['RED']}R+{abs(margin):.1f}{STYLING['RESET']}"
+    elif margin < 0:
+        return f"{STYLING['BLUE']}D+{abs(margin):.1f}{STYLING['RESET']}"
+    return "TIE"
+
+def format_row(name, rep_val, dem_val):
+    """Format a single row of data"""
+    rep_str = format_value(rep_val, rep_val > dem_val)
+    dem_str = format_value(dem_val, dem_val > rep_val)
+    margin = format_margin(rep_val, dem_val)
+    
+    return (
+        pad_string(name, FORMATTING['name_width']) +
+        pad_string(rep_str, FORMATTING['num_width']) +
+        pad_string(dem_str, FORMATTING['num_width']) +
+        pad_string(margin, FORMATTING['num_width'])
+    )
+
+def calculate_stats(data):
+    """Calculate average and median statistics"""
+    if not data:
+        return 0, 0, 0, 0
+    
+    reps = [row['rep'] for row in data]
+    dems = [row['dem'] for row in data]
+    
+    return (
+        sum(reps) / len(reps),    # avg_rep
+        sum(dems) / len(dems),    # avg_dem
+        median(reps),             # med_rep
+        median(dems)              # med_dem
+    )
+
+def print_section(title, data, show_stats=True):
+    """Print a section with its data and statistics"""
+    header = pad_string(title, FORMATTING['name_width']) + \
+             pad_string('R', FORMATTING['num_width']) + \
+             pad_string('D', FORMATTING['num_width']) + 'Margin'
+    print(f"{STYLING['BOLD']}{STYLING['UNDERLINE']}{header}{STYLING['RESET']}")
+    
+    for row in data:
+        print(format_row(row['name'], row['rep'], row['dem']))
+    
+    if show_stats:
+        avg_rep, avg_dem, med_rep, med_dem = calculate_stats(data)
+        print(format_row('AVERAGE', avg_rep, avg_dem))
+        print(format_row('MEDIAN', med_rep, med_dem))
+        return avg_rep, avg_dem, med_rep, med_dem
+
+def main():
+    # Fetch data
+    url = "https://electionforecasts.com/2024/us/president/data.json"
+    response = requests.get(url)
+    data = response.json()['percent']
+    
+    # Process and display forecasts
+    print_section('Forecasts', data['forecasts'])
+    f_stats = calculate_stats(data['forecasts'])
+    
+    # Process and display markets
+    print('\n', end='')
+    print_section('Markets', data['markets'])
+    m_stats = calculate_stats(data['markets'])
+    
+    # Display overall section
+    print('\n', end='')
+    f_avg_rep, f_avg_dem, f_med_rep, f_med_dem = f_stats
+    m_avg_rep, m_avg_dem, m_med_rep, m_med_dem = m_stats
+    
+    # Print overall header
+    header = pad_string('Overall', FORMATTING['name_width']) + \
+             pad_string('R', FORMATTING['num_width']) + \
+             pad_string('D', FORMATTING['num_width']) + 'Margin'
+    print(f"{STYLING['BOLD']}{STYLING['UNDERLINE']}{header}{STYLING['RESET']}")
+    
+    print(format_row('Forecasts Average', f_avg_rep, f_avg_dem))
+    print(format_row('Forecasts Median', f_med_rep, f_med_dem))
+    print(format_row('Markets Average', m_avg_rep, m_avg_dem))
+    print(format_row('Markets Median', m_med_rep, m_med_dem))
+    
+    # Combined stats
+    combined_avg_rep = (f_avg_rep + m_avg_rep) / 2
+    combined_avg_dem = (f_avg_dem + m_avg_dem) / 2
+    print(format_row('Combined Average', combined_avg_rep, combined_avg_dem))
+    
+    combined_med_rep = median([f_med_rep, m_med_rep])
+    combined_med_dem = median([f_med_dem, m_med_dem])
+    print(format_row('Combined Median', combined_med_rep, combined_med_dem))
+    
+    # Calculate time until election
+    eastern = pytz.timezone('US/Eastern')
+    now = datetime.now(eastern)
+    election_time = eastern.localize(datetime(2024, 11, 5, 23, 0))
+    time_until = election_time - now
+    
+    print(f"\nElection: {time_until.days} days, {time_until.seconds // 3600} hours")
+
+if __name__ == '__main__':
+    main()
