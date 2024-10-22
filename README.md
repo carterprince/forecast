@@ -1,6 +1,6 @@
 # forecast
 
-Forecast the 2024 Presidential Election at the command line.
+Live-forecasting of the 2024 Presidential Election at the command line.
 
 Thanks [electionforecasts.com](https://electionforecasts.com) for the data.
 
